@@ -38,7 +38,8 @@ export type RefreshFailureReason =
   | 'server_rejected'
   | 'network_error'
   | 'lock_error'
-  | 'invalid_response';
+  | 'invalid_response'
+  | 'save_failed';
 
 export type RefreshAccessTokenResult =
   | { ok: true; credentials: Credentials }
@@ -131,26 +132,34 @@ export async function refreshAccessTokenWithResult(): Promise<RefreshAccessToken
         };
       }
 
+      let data: { refresh_token?: string; access_token?: string };
       try {
-        const data = (await response.json()) as { refresh_token?: string; access_token?: string };
-        if (!data.access_token || !data.refresh_token) {
-          debug('token refresh response missing token fields');
-          return { ok: false, reason: 'invalid_response' };
-        }
-
-        const newCreds: Credentials = {
-          refreshToken: data.refresh_token,
-          accessToken: data.access_token,
-          clientId: creds.clientId,
-        };
-
-        await saveCredentials(newCreds);
-        debug('token refresh successful, new credentials saved');
-        return { ok: true, credentials: newCreds };
+        data = (await response.json()) as { refresh_token?: string; access_token?: string };
       } catch (error) {
         debug('token refresh invalid response: %O', error);
         return { ok: false, reason: 'invalid_response' };
       }
+
+      if (!data.access_token || !data.refresh_token) {
+        debug('token refresh response missing token fields');
+        return { ok: false, reason: 'invalid_response' };
+      }
+
+      const newCreds: Credentials = {
+        refreshToken: data.refresh_token,
+        accessToken: data.access_token,
+        clientId: creds.clientId,
+      };
+
+      try {
+        await saveCredentials(newCreds);
+      } catch (error) {
+        debug('token refresh failed to save new credentials: %O', error);
+        return { ok: false, reason: 'save_failed' };
+      }
+
+      debug('token refresh successful, new credentials saved');
+      return { ok: true, credentials: newCreds };
     });
   } catch (error) {
     debug('token refresh lock error: %O', error);

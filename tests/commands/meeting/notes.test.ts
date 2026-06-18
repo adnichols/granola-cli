@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNotesCommand } from '../../../src/commands/meeting/notes.js';
+import { AuthRecoveryError } from '../../../src/lib/errors.js';
 import { mockMeetingWithNotes } from '../../fixtures/meetings.js';
 import { captureConsole } from '../../setup.js';
 
@@ -148,6 +149,47 @@ describe('meeting notes command', () => {
     );
     expect(console_.errors.some((log) => /failed to fetch notes/i.test(log))).toBe(true);
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it('should preserve auth recovery details from caught notes errors', async () => {
+    vi.mocked(meetings.resolveId).mockResolvedValue('meeting-id');
+    vi.mocked(meetings.getNotes).mockRejectedValue(
+      new AuthRecoveryError('Authentication required; token refresh failed.', [
+        'The imported desktop plaintext credentials may be stale.',
+      ]),
+    );
+
+    const program = new Command();
+    program.addCommand(createNotesCommand());
+
+    await expect(program.parseAsync(['node', 'test', 'notes', 'meeting-id'])).rejects.toThrow(
+      /process\.exit/i,
+    );
+    expect(console_.errors.some((log) => /token refresh failed/i.test(log))).toBe(true);
+    expect(console_.errors.some((log) => /plaintext credentials may be stale/i.test(log))).toBe(
+      true,
+    );
+    expect(mockExit).toHaveBeenCalledWith(2);
+  });
+
+  it('should preserve auth recovery details from caught resolve errors', async () => {
+    vi.mocked(meetings.resolveId).mockRejectedValue(
+      new AuthRecoveryError('Authentication required; token refresh failed.', [
+        'The imported desktop plaintext credentials may be stale.',
+      ]),
+    );
+
+    const program = new Command();
+    program.addCommand(createNotesCommand());
+
+    await expect(program.parseAsync(['node', 'test', 'notes', 'meeting-id'])).rejects.toThrow(
+      /process\.exit/i,
+    );
+    expect(console_.errors.some((log) => /token refresh failed/i.test(log))).toBe(true);
+    expect(console_.errors.some((log) => /plaintext credentials may be stale/i.test(log))).toBe(
+      true,
+    );
+    expect(mockExit).toHaveBeenCalledWith(2);
   });
 
   it('should handle authentication failures', async () => {

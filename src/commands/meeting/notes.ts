@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { createGranolaDebug } from '../../lib/debug.js';
+import { AuthRecoveryError, handleGlobalError } from '../../lib/errors.js';
 import { formatOutput, type OutputFormat } from '../../lib/output.js';
 import { pipeToPager } from '../../lib/pager.js';
 import { toMarkdown } from '../../lib/prosemirror.js';
@@ -36,6 +37,7 @@ export function createNotesCommand() {
         }
         fullId = resolved;
       } catch (err) {
+        if (err instanceof AuthRecoveryError) process.exit(handleGlobalError(err));
         console.error(chalk.red((err as Error).message));
         process.exit(1);
       }
@@ -44,6 +46,7 @@ export function createNotesCommand() {
       try {
         notes = await meetings.getNotes(fullId);
       } catch (error) {
+        if (error instanceof AuthRecoveryError) process.exit(handleGlobalError(error));
         debug('failed to load notes: %O', error);
         console.error(chalk.red('Error:'), 'Failed to fetch notes.');
         if (error instanceof Error) {

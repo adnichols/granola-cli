@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { createGranolaDebug } from '../../lib/debug.js';
+import { AuthRecoveryError, handleGlobalError } from '../../lib/errors.js';
 import { toMarkdown } from '../../lib/prosemirror.js';
 import { toToon } from '../../lib/toon.js';
 import * as meetings from '../../services/meetings.js';
@@ -39,6 +40,7 @@ export function createExportCommand() {
         }
         fullId = resolved;
       } catch (err) {
+        if (err instanceof AuthRecoveryError) process.exit(handleGlobalError(err));
         console.error(chalk.red((err as Error).message));
         process.exit(1);
       }

@@ -159,6 +159,24 @@ describe('client service', () => {
       expect(auth.refreshAccessTokenWithResult).toHaveBeenCalledTimes(1);
     });
 
+    it('should explain when refreshed credentials cannot be saved', async () => {
+      const error401 = { status: 401, message: 'Unauthorized' };
+      const mockOperation = vi.fn().mockRejectedValue(error401);
+
+      vi.mocked(auth.refreshAccessTokenWithResult).mockResolvedValue({
+        ok: false,
+        reason: 'save_failed',
+      });
+
+      await expect(withTokenRefresh(mockOperation)).rejects.toMatchObject({
+        message: 'Authentication required; token refresh failed.',
+        details: expect.arrayContaining([
+          expect.stringMatching(/could not save them to the keychain/i),
+        ]),
+      });
+      expect(mockOperation).toHaveBeenCalledTimes(1);
+    });
+
     it('should not retry on non-401 errors', async () => {
       const error500 = { status: 500, message: 'Internal Server Error' };
       const mockOperation = vi.fn().mockRejectedValue(error500);

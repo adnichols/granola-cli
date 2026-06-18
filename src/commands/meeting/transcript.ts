@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { createGranolaDebug } from '../../lib/debug.js';
+import { AuthRecoveryError, handleGlobalError } from '../../lib/errors.js';
 import { formatOutput, type OutputFormat } from '../../lib/output.js';
 import { pipeToPager } from '../../lib/pager.js';
 import { formatTranscript } from '../../lib/transcript.js';
@@ -38,6 +39,7 @@ export function createTranscriptCommand() {
         }
         fullId = resolved;
       } catch (err) {
+        if (err instanceof AuthRecoveryError) process.exit(handleGlobalError(err));
         console.error(chalk.red((err as Error).message));
         process.exit(1);
       }

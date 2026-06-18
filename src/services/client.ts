@@ -76,6 +76,14 @@ function formatRefreshFailureDetails(
         'The refresh endpoint returned an unexpected response without replacement tokens.',
       );
       break;
+    case 'save_failed':
+      details.push(
+        'The refresh endpoint returned replacement tokens, but the CLI could not save them to the keychain.',
+      );
+      details.push(
+        'Unlock the keychain or retry from an interactive terminal, then run granola auth login if needed.',
+      );
+      break;
     case 'lock_error':
       details.push(
         'The CLI could not acquire the token refresh lock. Retry after other granola commands finish.',

@@ -697,6 +697,38 @@ describe('auth', () => {
       expect(crossKeychain.setPassword).not.toHaveBeenCalled();
     });
 
+    it('should report save failure separately from invalid refresh response', async () => {
+      const storedCreds = JSON.stringify({
+        refreshToken: 'old-refresh-token',
+        accessToken: 'old-access-token',
+        clientId: 'test-client-id',
+      });
+      vi.mocked(crossKeychain.getPassword).mockResolvedValue(storedCreds);
+      vi.mocked(crossKeychain.setPassword).mockRejectedValue(new Error('Keychain locked'));
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            access_token: 'new-access-token',
+            refresh_token: 'new-refresh-token',
+          }),
+      });
+
+      const result = await refreshAccessTokenWithResult();
+
+      expect(result).toEqual({ ok: false, reason: 'save_failed' });
+      expect(crossKeychain.setPassword).toHaveBeenCalledWith(
+        'com.granola.cli',
+        'credentials',
+        JSON.stringify({
+          refreshToken: 'new-refresh-token',
+          accessToken: 'new-access-token',
+          clientId: 'test-client-id',
+        }),
+      );
+    });
+
     it('should return null on network error', async () => {
       const storedCreds = JSON.stringify({
         refreshToken: 'old-refresh-token',

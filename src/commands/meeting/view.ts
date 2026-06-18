@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import open from 'open';
 import { createGranolaDebug } from '../../lib/debug.js';
+import { AuthRecoveryError, handleGlobalError } from '../../lib/errors.js';
 import { formatDate, formatOutput, type OutputFormat } from '../../lib/output.js';
 import * as meetings from '../../services/meetings.js';
 
@@ -33,6 +34,7 @@ export function createViewCommand() {
         }
         fullId = resolved;
       } catch (err) {
+        if (err instanceof AuthRecoveryError) process.exit(handleGlobalError(err));
         console.error(chalk.red((err as Error).message));
         process.exit(1);
       }
