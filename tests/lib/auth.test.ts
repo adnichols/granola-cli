@@ -519,6 +519,49 @@ describe('auth', () => {
       });
     });
 
+    it('should choose fresher supabase credentials over stale stored accounts', async () => {
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/testuser');
+      vi.mocked(fs.stat).mockImplementation(async (path) => {
+        if (String(path).endsWith('stored-accounts.json')) return { mtimeMs: 1000 } as never;
+        if (String(path).endsWith('supabase.json')) return { mtimeMs: 3000 } as never;
+        if (String(path).endsWith('stored-accounts.json.enc')) return { mtimeMs: 2000 } as never;
+        throw missingFileError();
+      });
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        if (String(path).endsWith('stored-accounts.json')) {
+          return JSON.stringify({
+            accounts: {
+              account1: {
+                tokens: {
+                  refresh_token: 'stored-refresh-token',
+                  access_token: 'stored-access-token',
+                  client_id: 'stored-client-id',
+                },
+              },
+            },
+          });
+        }
+        return JSON.stringify({
+          refresh_token: 'supabase-refresh-token',
+          access_token: 'supabase-access-token',
+          client_id: 'supabase-client-id',
+        });
+      });
+
+      const result = await loadCredentialsFromFile();
+
+      expect(result).toMatchObject({
+        credentials: {
+          refreshToken: 'supabase-refresh-token',
+          accessToken: 'supabase-access-token',
+          clientId: 'supabase-client-id',
+        },
+        sourceType: 'supabase',
+        warnings: [],
+      });
+    });
+
     it('should warn when imported plaintext is older than encrypted state', async () => {
       vi.mocked(os.platform).mockReturnValue('darwin');
       vi.mocked(os.homedir).mockReturnValue('/Users/testuser');
@@ -766,6 +809,36 @@ describe('auth', () => {
           signal?.addEventListener('abort', () =>
             reject(new DOMException('Aborted', 'AbortError')),
           );
+        });
+      });
+
+      const resultPromise = refreshAccessTokenWithResult();
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await resultPromise;
+
+      expect(result).toEqual({ ok: false, reason: 'network_error' });
+      expect(crossKeychain.setPassword).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('should keep the refresh timeout active while parsing the response body', async () => {
+      vi.useFakeTimers();
+      const storedCreds = JSON.stringify({
+        refreshToken: 'old-refresh-token',
+        accessToken: 'old-access-token',
+        clientId: 'test-client-id',
+      });
+      vi.mocked(crossKeychain.getPassword).mockResolvedValue(storedCreds);
+      mockFetch.mockImplementation((_url, options) => {
+        const signal = (options as RequestInit).signal;
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              signal?.addEventListener('abort', () =>
+                reject(new DOMException('Aborted', 'AbortError')),
+              );
+            }),
         });
       });
 

@@ -108,11 +108,11 @@ export async function refreshAccessTokenWithResult(): Promise<RefreshAccessToken
         return { ok: false, reason: 'missing_client_id' };
       }
 
-      let response: Response;
+      let data: { refresh_token?: string; access_token?: string };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), TOKEN_REFRESH_TIMEOUT_MS);
       try {
-        response = await fetch(WORKOS_AUTH_URL, {
+        const response = await fetch(WORKOS_AUTH_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -122,29 +122,31 @@ export async function refreshAccessTokenWithResult(): Promise<RefreshAccessToken
           }),
           signal: controller.signal,
         });
+
+        if (!response.ok) {
+          debug('token refresh failed: %d %s', response.status, response.statusText);
+          return {
+            ok: false,
+            reason: 'server_rejected',
+            status: response.status,
+            statusText: response.statusText,
+          };
+        }
+
+        try {
+          data = (await response.json()) as { refresh_token?: string; access_token?: string };
+        } catch (error) {
+          debug('token refresh invalid response: %O', error);
+          return {
+            ok: false,
+            reason: controller.signal.aborted ? 'network_error' : 'invalid_response',
+          };
+        }
       } catch (error) {
         debug('token refresh network error: %O', error);
         return { ok: false, reason: 'network_error' };
       } finally {
         clearTimeout(timeout);
-      }
-
-      if (!response.ok) {
-        debug('token refresh failed: %d %s', response.status, response.statusText);
-        return {
-          ok: false,
-          reason: 'server_rejected',
-          status: response.status,
-          statusText: response.statusText,
-        };
-      }
-
-      let data: { refresh_token?: string; access_token?: string };
-      try {
-        data = (await response.json()) as { refresh_token?: string; access_token?: string };
-      } catch (error) {
-        debug('token refresh invalid response: %O', error);
-        return { ok: false, reason: 'invalid_response' };
       }
 
       if (!data.access_token || !data.refresh_token) {
@@ -319,6 +321,15 @@ async function readCredentialsFile(
   }
 }
 
+function getDesktopStateMtime(
+  state: GranolaDesktopState,
+  sourceType: CredentialSourceType,
+): number {
+  const sourceFile = sourceType === 'stored-accounts' ? 'stored-accounts.json' : 'supabase.json';
+  const file = state.files.find((entry) => entry.name === sourceFile);
+  return file?.exists && file.mtimeMs !== undefined ? file.mtimeMs : 0;
+}
+
 function buildImportWarnings(
   sourceType: CredentialSourceType,
   state: GranolaDesktopState,
@@ -333,7 +344,7 @@ function buildImportWarnings(
 
 /**
  * Loads credentials from the default Granola desktop credential files.
- * Prefers stored-accounts.json, then falls back to legacy supabase.json.
+ * Prefers the freshest parseable source, using stored-accounts.json as tie-breaker.
  */
 export async function loadCredentialsFromFile(): Promise<CredentialImportResult | null> {
   const desktopState = await inspectGranolaDesktopState();
@@ -342,17 +353,26 @@ export async function loadCredentialsFromFile(): Promise<CredentialImportResult 
     { path: getDefaultSupabasePath(), sourceType: 'supabase' },
   ];
 
+  const parsedCandidates: CredentialImportResult[] = [];
   for (const candidate of candidates) {
     const credentials = await readCredentialsFile(candidate.path, candidate.sourceType);
     if (credentials) {
-      return {
+      parsedCandidates.push({
         credentials,
         sourcePath: candidate.path,
         sourceType: candidate.sourceType,
         warnings: buildImportWarnings(candidate.sourceType, desktopState),
         desktopState,
-      };
+      });
     }
+  }
+
+  if (parsedCandidates.length > 0) {
+    return parsedCandidates.sort(
+      (a, b) =>
+        getDesktopStateMtime(desktopState, b.sourceType) -
+        getDesktopStateMtime(desktopState, a.sourceType),
+    )[0];
   }
 
   if (!hasAnyDesktopState(desktopState)) {
