@@ -17,6 +17,7 @@ vi.mock('node:os', () => ({
 // Mock node:fs/promises for file-based credential tests
 vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),
+  stat: vi.fn(),
 }));
 
 // Mock lock module to avoid file system operations in tests
@@ -32,10 +33,13 @@ import * as crossKeychain from 'cross-keychain';
 import {
   deleteCredentials,
   getCredentials,
+  getDefaultStoredAccountsPath,
   getDefaultSupabasePath,
   loadCredentialsFromFile,
+  parseStoredAccountsJson,
   parseSupabaseJson,
   refreshAccessToken,
+  refreshAccessTokenWithResult,
   saveCredentials,
 } from '../../src/lib/auth.js';
 import { withLock } from '../../src/lib/lock.js';
@@ -43,6 +47,7 @@ import { withLock } from '../../src/lib/lock.js';
 describe('auth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fs.stat).mockRejectedValue(new Error('ENOENT: no such file or directory'));
   });
 
   describe('getCredentials', () => {
@@ -320,14 +325,89 @@ describe('auth', () => {
     });
   });
 
-  describe('getDefaultSupabasePath', () => {
-    it('should return macOS path when on darwin', () => {
+  describe('parseStoredAccountsJson', () => {
+    it('should parse stored accounts with stringified accounts and tokens', () => {
+      const storedAccountsJson = {
+        accounts: JSON.stringify({
+          account1: {
+            tokens: JSON.stringify({
+              access_token: 'stored-access-token',
+              refresh_token: 'stored-refresh-token',
+              client_id: 'stored-client-id',
+            }),
+          },
+        }),
+      };
+
+      const result = parseStoredAccountsJson(JSON.stringify(storedAccountsJson));
+
+      expect(result).toEqual({
+        refreshToken: 'stored-refresh-token',
+        accessToken: 'stored-access-token',
+        clientId: 'stored-client-id',
+      });
+    });
+
+    it('should parse stored accounts with object-shaped accounts and tokens', () => {
+      const storedAccountsJson = {
+        accounts: {
+          account1: {
+            tokens: {
+              access_token: 'stored-access-token',
+              refresh_token: 'stored-refresh-token',
+            },
+          },
+        },
+      };
+
+      const result = parseStoredAccountsJson(JSON.stringify(storedAccountsJson));
+
+      expect(result).toEqual({
+        refreshToken: 'stored-refresh-token',
+        accessToken: 'stored-access-token',
+        clientId: 'client_GranolaMac',
+      });
+    });
+
+    it('should parse stored accounts with array-shaped accounts', () => {
+      const storedAccountsJson = {
+        accounts: [
+          { email: 'first@example.com' },
+          {
+            tokens: {
+              access_token: 'stored-access-token',
+              refresh_token: 'stored-refresh-token',
+              client_id: 'stored-client-id',
+            },
+          },
+        ],
+      };
+
+      const result = parseStoredAccountsJson(JSON.stringify(storedAccountsJson));
+
+      expect(result).toEqual({
+        refreshToken: 'stored-refresh-token',
+        accessToken: 'stored-access-token',
+        clientId: 'stored-client-id',
+      });
+    });
+
+    it('should return null for invalid stored accounts JSON', () => {
+      expect(parseStoredAccountsJson('not valid json')).toBeNull();
+    });
+  });
+
+  describe('default desktop paths', () => {
+    it('should return macOS paths when on darwin', () => {
       vi.mocked(os.platform).mockReturnValue('darwin');
       vi.mocked(os.homedir).mockReturnValue('/Users/testuser');
 
-      const result = getDefaultSupabasePath();
-
-      expect(result).toBe('/Users/testuser/Library/Application Support/Granola/supabase.json');
+      expect(getDefaultSupabasePath()).toBe(
+        '/Users/testuser/Library/Application Support/Granola/supabase.json',
+      );
+      expect(getDefaultStoredAccountsPath()).toBe(
+        '/Users/testuser/Library/Application Support/Granola/stored-accounts.json',
+      );
     });
 
     it('should return Windows path using APPDATA when available', () => {
@@ -370,27 +450,99 @@ describe('auth', () => {
   });
 
   describe('loadCredentialsFromFile', () => {
-    it('should return credentials when file exists and is valid', async () => {
+    it('should prefer stored accounts over supabase credentials', async () => {
       vi.mocked(os.platform).mockReturnValue('darwin');
       vi.mocked(os.homedir).mockReturnValue('/Users/testuser');
 
-      const validSupabaseJson = JSON.stringify({
-        refresh_token: 'file-refresh-token',
-        access_token: 'file-access-token',
-        client_id: 'file-client-id',
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        if (String(path).endsWith('stored-accounts.json')) {
+          return JSON.stringify({
+            accounts: {
+              account1: {
+                tokens: {
+                  refresh_token: 'stored-refresh-token',
+                  access_token: 'stored-access-token',
+                  client_id: 'stored-client-id',
+                },
+              },
+            },
+          });
+        }
+        return JSON.stringify({
+          refresh_token: 'supabase-refresh-token',
+          access_token: 'supabase-access-token',
+          client_id: 'supabase-client-id',
+        });
       });
-      vi.mocked(fs.readFile).mockResolvedValue(validSupabaseJson);
 
       const result = await loadCredentialsFromFile();
 
-      expect(result).toEqual({
-        refreshToken: 'file-refresh-token',
-        accessToken: 'file-access-token',
-        clientId: 'file-client-id',
+      expect(result).toMatchObject({
+        credentials: {
+          refreshToken: 'stored-refresh-token',
+          accessToken: 'stored-access-token',
+          clientId: 'stored-client-id',
+        },
+        sourceType: 'stored-accounts',
+        sourcePath: '/Users/testuser/Library/Application Support/Granola/stored-accounts.json',
+        warnings: [],
       });
     });
 
-    it('should return null when file does not exist', async () => {
+    it('should fall back to supabase when stored accounts cannot be parsed', async () => {
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/testuser');
+
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        if (String(path).endsWith('stored-accounts.json')) return 'not valid json';
+        return JSON.stringify({
+          refresh_token: 'supabase-refresh-token',
+          access_token: 'supabase-access-token',
+          client_id: 'supabase-client-id',
+        });
+      });
+
+      const result = await loadCredentialsFromFile();
+
+      expect(result).toMatchObject({
+        credentials: {
+          refreshToken: 'supabase-refresh-token',
+          accessToken: 'supabase-access-token',
+          clientId: 'supabase-client-id',
+        },
+        sourceType: 'supabase',
+      });
+    });
+
+    it('should warn when imported plaintext is older than encrypted state', async () => {
+      vi.mocked(os.platform).mockReturnValue('darwin');
+      vi.mocked(os.homedir).mockReturnValue('/Users/testuser');
+      vi.mocked(fs.stat).mockImplementation(async (path) => {
+        const mtimeMs = String(path).endsWith('stored-accounts.json.enc') ? 2000 : 1000;
+        return { mtimeMs } as never;
+      });
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        if (String(path).endsWith('stored-accounts.json')) {
+          return JSON.stringify({
+            accounts: {
+              account1: {
+                tokens: {
+                  refresh_token: 'stored-refresh-token',
+                  access_token: 'stored-access-token',
+                },
+              },
+            },
+          });
+        }
+        throw new Error('ENOENT');
+      });
+
+      const result = await loadCredentialsFromFile();
+
+      expect(result?.warnings.join(' ')).toMatch(/older than encrypted/i);
+    });
+
+    it('should return null when files do not exist', async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT: no such file or directory'));
 
       const result = await loadCredentialsFromFile();
@@ -398,7 +550,7 @@ describe('auth', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null when file contains invalid JSON', async () => {
+    it('should return null when files contain invalid JSON', async () => {
       vi.mocked(fs.readFile).mockResolvedValue('not valid json');
 
       const result = await loadCredentialsFromFile();
@@ -517,6 +669,31 @@ describe('auth', () => {
       const result = await refreshAccessToken();
 
       expect(result).toBeNull();
+      expect(crossKeychain.setPassword).not.toHaveBeenCalled();
+    });
+
+    it('should return server rejection metadata when WorkOS returns error', async () => {
+      const storedCreds = JSON.stringify({
+        refreshToken: 'old-refresh-token',
+        accessToken: 'old-access-token',
+        clientId: 'test-client-id',
+      });
+      vi.mocked(crossKeychain.getPassword).mockResolvedValue(storedCreds);
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+      });
+
+      const result = await refreshAccessTokenWithResult();
+
+      expect(result).toEqual({
+        ok: false,
+        reason: 'server_rejected',
+        status: 400,
+        statusText: 'Bad Request',
+      });
       expect(crossKeychain.setPassword).not.toHaveBeenCalled();
     });
 

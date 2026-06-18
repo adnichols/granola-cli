@@ -1,5 +1,7 @@
 import { vi } from 'vitest';
 
+process.env.TZ = 'UTC';
+
 // Mock cross-keychain
 vi.mock('cross-keychain', () => ({
   getPassword: vi.fn(),
