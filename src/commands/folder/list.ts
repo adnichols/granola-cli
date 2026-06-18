@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { createGranolaDebug } from '../../lib/debug.js';
+import { AuthRecoveryError, handleGlobalError } from '../../lib/errors.js';
 import { formatOutput, type OutputFormat, table } from '../../lib/output.js';
 import { list as listFolders } from '../../services/folders.js';
 import type { Folder } from '../../types.js';
@@ -30,6 +31,7 @@ export function createListCommand() {
         });
         debug('fetched %d folders', data.length);
       } catch (error) {
+        if (error instanceof AuthRecoveryError) process.exit(handleGlobalError(error));
         console.error(chalk.red('Error:'), 'Failed to list folders.');
         if (error instanceof Error) {
           console.error(chalk.dim(error.message));

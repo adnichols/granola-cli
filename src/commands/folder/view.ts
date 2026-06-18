@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { createGranolaDebug } from '../../lib/debug.js';
+import { AuthRecoveryError, handleGlobalError } from '../../lib/errors.js';
 import { formatOutput, type OutputFormat } from '../../lib/output.js';
 import { get as getFolder } from '../../services/folders.js';
 import type { Folder } from '../../types.js';
@@ -27,6 +28,7 @@ export function createViewCommand() {
       try {
         folder = await getFolder(id);
       } catch (error) {
+        if (error instanceof AuthRecoveryError) process.exit(handleGlobalError(error));
         console.error(chalk.red('Error:'), 'Failed to load folder.');
         if (error instanceof Error) {
           console.error(chalk.dim(error.message));

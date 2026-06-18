@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleGlobalError } from '../../src/lib/errors.js';
+import { AuthRecoveryError, handleGlobalError } from '../../src/lib/errors.js';
 import { ApiError } from '../../src/lib/http.js';
 
 describe('handleGlobalError', () => {
@@ -11,6 +11,26 @@ describe('handleGlobalError', () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+  });
+
+  describe('AuthRecoveryError handling', () => {
+    it('should return exit code 2 with refresh failure details', () => {
+      const error = new AuthRecoveryError('Authentication required; token refresh failed.', [
+        'The CLI attempted to refresh the stored access token before stopping.',
+        'The imported desktop plaintext credentials may be stale.',
+      ]);
+
+      const exitCode = handleGlobalError(error);
+
+      expect(exitCode).toBe(2);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error:'),
+        'Authentication required; token refresh failed.',
+      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'The imported desktop plaintext credentials may be stale.',
+      );
+    });
   });
 
   describe('ApiError handling', () => {
@@ -25,6 +45,9 @@ describe('handleGlobalError', () => {
         'Authentication required.',
       );
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('granola auth login'));
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('rerunning login may not fix'),
+      );
     });
 
     it('should return exit code 1 for other API errors', () => {

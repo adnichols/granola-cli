@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../src/lib/auth.js', () => ({
   getCredentials: vi.fn(),
   saveCredentials: vi.fn(),
-  refreshAccessToken: vi.fn(),
+  refreshAccessTokenWithResult: vi.fn(),
 }));
 
 // Mock http client
@@ -106,7 +106,7 @@ describe('client service', () => {
 
       expect(result).toBe('success');
       expect(mockOperation).toHaveBeenCalledTimes(1);
-      expect(auth.refreshAccessToken).not.toHaveBeenCalled();
+      expect(auth.refreshAccessTokenWithResult).not.toHaveBeenCalled();
     });
 
     it('should retry operation after 401 and successful refresh', async () => {
@@ -122,7 +122,10 @@ describe('client service', () => {
         .mockRejectedValueOnce(error401)
         .mockResolvedValueOnce('success after refresh');
 
-      vi.mocked(auth.refreshAccessToken).mockResolvedValue(mockCreds);
+      vi.mocked(auth.refreshAccessTokenWithResult).mockResolvedValue({
+        ok: true,
+        credentials: mockCreds,
+      });
       vi.mocked(auth.getCredentials).mockResolvedValue(mockCreds);
 
       const mockHttpClient = { post: vi.fn(), setToken: vi.fn() };
@@ -135,18 +138,62 @@ describe('client service', () => {
 
       expect(result).toBe('success after refresh');
       expect(mockOperation).toHaveBeenCalledTimes(2);
-      expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(auth.refreshAccessTokenWithResult).toHaveBeenCalledTimes(1);
     });
 
-    it('should throw original error when refresh fails after 401', async () => {
+    it('should throw auth recovery error when refresh fails after 401', async () => {
       const error401 = { status: 401, message: 'Unauthorized' };
       const mockOperation = vi.fn().mockRejectedValue(error401);
 
-      vi.mocked(auth.refreshAccessToken).mockResolvedValue(null);
+      vi.mocked(auth.refreshAccessTokenWithResult).mockResolvedValue({
+        ok: false,
+        reason: 'server_rejected',
+        status: 400,
+        statusText: 'Bad Request',
+      });
 
-      await expect(withTokenRefresh(mockOperation)).rejects.toEqual(error401);
+      await expect(withTokenRefresh(mockOperation)).rejects.toMatchObject({
+        message: 'Authentication required; token refresh failed.',
+        details: expect.arrayContaining([
+          'Granola/WorkOS rejected the refresh token (400 Bad Request).',
+        ]),
+      });
       expect(mockOperation).toHaveBeenCalledTimes(1);
-      expect(auth.refreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(auth.refreshAccessTokenWithResult).toHaveBeenCalledTimes(1);
+    });
+
+    it('should format server rejection status without status text', async () => {
+      const error401 = { status: 401, message: 'Unauthorized' };
+      const mockOperation = vi.fn().mockRejectedValue(error401);
+
+      vi.mocked(auth.refreshAccessTokenWithResult).mockResolvedValue({
+        ok: false,
+        reason: 'server_rejected',
+        status: 401,
+      });
+
+      await expect(withTokenRefresh(mockOperation)).rejects.toMatchObject({
+        message: 'Authentication required; token refresh failed.',
+        details: expect.arrayContaining(['Granola/WorkOS rejected the refresh token (401).']),
+      });
+    });
+
+    it('should explain when refreshed credentials cannot be saved', async () => {
+      const error401 = { status: 401, message: 'Unauthorized' };
+      const mockOperation = vi.fn().mockRejectedValue(error401);
+
+      vi.mocked(auth.refreshAccessTokenWithResult).mockResolvedValue({
+        ok: false,
+        reason: 'save_failed',
+      });
+
+      await expect(withTokenRefresh(mockOperation)).rejects.toMatchObject({
+        message: 'Authentication required; token refresh failed.',
+        details: expect.arrayContaining([
+          expect.stringMatching(/could not save them to the keychain/i),
+        ]),
+      });
+      expect(mockOperation).toHaveBeenCalledTimes(1);
     });
 
     it('should not retry on non-401 errors', async () => {
@@ -155,7 +202,7 @@ describe('client service', () => {
 
       await expect(withTokenRefresh(mockOperation)).rejects.toEqual(error500);
       expect(mockOperation).toHaveBeenCalledTimes(1);
-      expect(auth.refreshAccessToken).not.toHaveBeenCalled();
+      expect(auth.refreshAccessTokenWithResult).not.toHaveBeenCalled();
     });
 
     it('should handle errors without status property', async () => {
@@ -164,7 +211,7 @@ describe('client service', () => {
 
       await expect(withTokenRefresh(mockOperation)).rejects.toEqual(genericError);
       expect(mockOperation).toHaveBeenCalledTimes(1);
-      expect(auth.refreshAccessToken).not.toHaveBeenCalled();
+      expect(auth.refreshAccessTokenWithResult).not.toHaveBeenCalled();
     });
   });
 });

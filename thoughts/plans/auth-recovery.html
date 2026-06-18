@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Granola CLI Auth Recovery PR 1 Plan</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #121a2e;
+      --panel-2: #17213a;
+      --text: #eef4ff;
+      --muted: #a8b5cf;
+      --subtle: #7887a6;
+      --border: #2b395a;
+      --accent: #7dd3fc;
+      --accent-2: #c4b5fd;
+      --good: #86efac;
+      --warn: #fde68a;
+      --bad: #fca5a5;
+      --code: #07111f;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, rgba(125, 211, 252, 0.14), transparent 34rem), var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+    main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }
+    header.hero {
+      padding: 32px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(18, 26, 46, 0.96), rgba(23, 33, 58, 0.88));
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+    }
+    h1, h2, h3, h4 { line-height: 1.22; }
+    h1 { margin: 0 0 12px; font-size: clamp(2.1rem, 5vw, 4rem); letter-spacing: -0.045em; }
+    h2 { margin: 0 0 18px; font-size: 1.6rem; letter-spacing: -0.02em; }
+    h3 { margin: 26px 0 12px; color: var(--accent); }
+    h4 { margin: 18px 0 8px; color: var(--accent-2); }
+    p { margin: 0 0 14px; }
+    a { color: var(--accent); }
+    code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    code { color: #d8f3ff; background: rgba(7, 17, 31, 0.8); padding: 0.12em 0.35em; border-radius: 6px; }
+    pre { background: var(--code); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; overflow-x: auto; }
+    section, article {
+      margin-top: 24px;
+      padding: 24px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(18, 26, 46, 0.82);
+    }
+    .lede { color: var(--muted); font-size: 1.08rem; max-width: 72ch; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    .pill { border: 1px solid var(--border); background: rgba(125, 211, 252, 0.08); color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 0.92rem; }
+    .pill.good { color: var(--good); border-color: rgba(134, 239, 172, 0.35); }
+    .pill.warn { color: var(--warn); border-color: rgba(253, 230, 138, 0.35); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: rgba(23, 33, 58, 0.72); }
+    .muted { color: var(--muted); }
+    .callout { border-left: 4px solid var(--accent); padding: 14px 16px; background: rgba(125, 211, 252, 0.08); border-radius: 12px; }
+    .warning { border-left-color: var(--warn); background: rgba(253, 230, 138, 0.08); }
+    .danger { border-left-color: var(--bad); background: rgba(252, 165, 165, 0.08); }
+    ul, ol { padding-left: 1.25rem; }
+    li { margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid var(--border); padding: 10px 12px; vertical-align: top; }
+    th { background: rgba(125, 211, 252, 0.08); text-align: left; color: var(--accent); }
+    .checkbox-list { list-style: none; padding-left: 0; }
+    .checkbox-list li { display: flex; gap: 10px; align-items: flex-start; }
+    .box { width: 1.05rem; height: 1.05rem; border: 1px solid var(--subtle); border-radius: 4px; margin-top: 0.22rem; flex: 0 0 auto; }
+    .phase { border-color: rgba(125, 211, 252, 0.28); }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero" id="title">
+      <p class="pill good">Execution-ready • PR 1 auth recovery scope</p>
+      <h1>Granola CLI Auth Recovery PR 1 Plan</h1>
+      <p class="lede">Make <code>granola auth login</code> and subsequent API commands behave truthfully for supported plaintext desktop auth: prefer <code>stored-accounts.json</code>, preserve legacy <code>supabase.json</code>, detect stale plaintext beside newer encrypted state, stop false-success messaging, and report refresh/auth failures with actionable diagnostics.</p>
+      <div class="meta" aria-label="plan metadata">
+        <span class="pill">Repo: <code>granola-cli</code></span>
+        <span class="pill">Source: <code>docs/AUTH-RECOVERY-PLAN.md</code></span>
+        <span class="pill">Durable encrypted/companion auth: deferred research</span>
+      </div>
+    </header>
+
+    <section id="status">
+      <h2>Status</h2>
+      <p><strong>Execution-ready for the first shippable PR.</strong> This plan intentionally scopes implementation to plaintext credential import, stale/encrypted-state diagnostics, refresh/error truthfulness, and documentation. It does not implement encrypted-state decryption or Granola companion socket support.</p>
+      <div class="callout" id="status-boundary">
+        <p><strong>Execution boundary:</strong> P1–P4 below are the only active implementation phases. Durable modern auth must be handled by a later reviewed research/decision plan because it changes the package trust boundary.</p>
+      </div>
+    </section>
+
+    <section id="goal">
+      <h2>Goal</h2>
+      <p>Stop the current false-success loop where <code>auth login</code> imports stale plaintext credentials, prints an unqualified success message, and <code>meeting list</code> immediately fails with <code>Authentication required</code>.</p>
+      <p>The PR 1 result should either import usable plaintext credentials and say exactly which source was used, or clearly label the result as import-only / unsupported encrypted state so users and agents do not retry the same ineffective command.</p>
+    </section>
+
+    <section id="why">
+      <h2>Why this plan exists</h2>
+      <p>Modern Granola desktop installs can leave legacy plaintext files behind while updating encrypted files. The current CLI reads only <code>supabase.json</code> on macOS, treats parsing as authentication success, and on API rejection tells the user to run the same login command again.</p>
+      <p>PR 1 fixes the misleading behavior without crossing the encrypted-state trust boundary.</p>
+    </section>
+
+    <section id="authority-inputs">
+      <h2>Authority and inputs</h2>
+      <ul>
+        <li><code>docs/AUTH-RECOVERY-PLAN.md</code>, read fully.</li>
+        <li>Current repo files inspected: <code>src/lib/auth.ts</code>, <code>src/services/client.ts</code>, <code>src/commands/auth/login.ts</code>, <code>src/commands/auth/status.ts</code>, <code>src/lib/errors.ts</code>.</li>
+        <li>Current tests inspected: <code>tests/lib/auth.test.ts</code>, <code>tests/commands/auth/login.test.ts</code>, <code>tests/services/client.test.ts</code>.</li>
+        <li>Repo guidance from <code>CLAUDE.md</code>: TypeScript ESM, Commander commands, keychain credential storage, Vitest, Biome, Node 20+.</li>
+        <li>Plan reviews incorporated: Codex plan review and Claude Code plan review on 2026-06-17.</li>
+      </ul>
+      <div class="callout danger" id="secret-handling">
+        <p><strong>Secret handling invariant:</strong> no token, refresh token, decrypted state, DEK, keychain secret, or decrypted JSON payload may be logged, committed, or added to fixtures. Diagnostics may include only metadata such as path basenames, existence, mtimes, relative freshness, and next actions.</p>
+      </div>
+    </section>
+
+    <section id="current-reality">
+      <h2>Current implementation reality</h2>
+      <div class="grid">
+        <article class="card" id="current-auth-lib">
+          <h3>Auth library</h3>
+          <p><code>src/lib/auth.ts</code> stores credentials in keychain service <code>com.granola.cli</code>, account <code>credentials</code>. It parses WorkOS/Cognito/root-token variants from <code>supabase.json</code> only.</p>
+        </article>
+        <article class="card" id="current-login">
+          <h3>Login command</h3>
+          <p><code>src/commands/auth/login.ts</code> calls <code>loadCredentialsFromFile()</code>, saves any parsed credentials, and prints success without source metadata, stale-state warnings, or server validation.</p>
+        </article>
+        <article class="card" id="current-refresh">
+          <h3>Refresh path</h3>
+          <p><code>refreshAccessToken()</code> posts directly to <code>https://api.workos.com/user_management/authenticate</code>. Failure returns <code>null</code>; the caller rethrows the original 401 and global error handling recommends login again.</p>
+        </article>
+        <article class="card" id="current-tests">
+          <h3>Tests</h3>
+          <p>Existing tests cover supabase parsing, keychain storage, login command success/failure, and token refresh success/failure. They do not cover <code>stored-accounts.json</code>, stale plaintext, encrypted-only diagnostics, or false-success wording.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="progress">
+      <h2>Progress</h2>
+      <ul class="checkbox-list">
+        <li id="progress-p1"><span class="box" aria-hidden="true">✓</span><span><strong>P1</strong> — Add stored-accounts plaintext import and source metadata.</span></li>
+        <li id="progress-p2"><span class="box" aria-hidden="true">✓</span><span><strong>P2</strong> — Add stale-plaintext and encrypted-only diagnostics.</span></li>
+        <li id="progress-p3"><span class="box" aria-hidden="true">✓</span><span><strong>P3</strong> — Clarify refresh/401 failure behavior.</span></li>
+        <li id="progress-p4"><span class="box" aria-hidden="true">✓</span><span><strong>P4</strong> — Update docs and final verification.</span></li>
+      </ul>
+    </section>
+
+    <section id="resume-instructions">
+      <h2>Resume instructions</h2>
+      <p>Read this plan fully, then continue at the first unchecked item in <a href="#progress">Progress</a>. Execute P1–P4 only. Do not implement encrypted-state decryption or companion socket support under this plan; create or use a separate reviewed research plan for that durable-auth decision.</p>
+    </section>
+
+    <section id="product-intent">
+      <h2>Product intent alignment</h2>
+      <ul>
+        <li id="intent-golden-path"><strong>Golden path:</strong> <code>granola auth login</code> selects the freshest supported plaintext source automatically, preferring <code>stored-accounts.json</code> over legacy <code>supabase.json</code>.</li>
+        <li id="intent-truthful-status"><strong>Truthful messaging:</strong> importing credentials is not the same as proving API usability. If encrypted siblings are newer and no validation succeeds, login output must be explicitly import-only or warning-qualified.</li>
+        <li id="intent-self-heal"><strong>Self-healing:</strong> when credentials can be safely refreshed or re-imported from supported plaintext, the CLI should do that and leave keychain state truthful.</li>
+        <li id="intent-fail-closed"><strong>Fail closed:</strong> when only encrypted desktop state appears current, the CLI must not guess, decrypt, or log secrets. It should explain unsupported encrypted state with file names and next action.</li>
+        <li id="intent-errors"><strong>Agent-legible errors:</strong> errors must state what failed, what the CLI tried, why retrying login may not help, and what to do next.</li>
+      </ul>
+    </section>
+
+    <section id="locked-decisions">
+      <h2>Locked decisions</h2>
+      <ul>
+        <li id="decision-prefer-stored"><code>stored-accounts.json</code> is preferred over legacy <code>supabase.json</code> when both parse successfully.</li>
+        <li id="decision-import-metadata"><code>auth login</code> success must identify the imported source path/type.</li>
+        <li id="decision-import-only"><code>auth login</code> must not imply API usability unless validation succeeds. If plaintext is stale relative to encrypted state and validation is not performed or fails, output must clearly label the result as import-only / may be stale instead of an unqualified <code>Credentials imported successfully</code>.</li>
+        <li id="decision-presence-only"><code>auth status</code> remains credential-presence-only unless a separate validation feature is explicitly scoped; docs must say this.</li>
+        <li id="decision-no-secret-logs">Diagnostics may include path basenames, existence, mtimes, and relative freshness; never file contents or token-like values.</li>
+        <li id="decision-refresh-truth">If the current refresh path rejects tokens, the CLI should emit a specific refresh-failed/stale-credentials diagnostic rather than blindly recommending the same login command.</li>
+      </ul>
+    </section>
+
+    <section id="acceptance-criteria">
+      <h2>Acceptance criteria</h2>
+      <ol>
+        <li id="ac-1"><strong>AC1:</strong> On installs with current plaintext <code>stored-accounts.json</code>, <code>granola auth login</code> imports from <code>stored-accounts.json</code> before falling back to <code>supabase.json</code>, and a subsequent lightweight API command succeeds when the imported credentials are valid.</li>
+        <li id="ac-2"><strong>AC2:</strong> Legacy installs with only usable <code>supabase.json</code> continue to import and authenticate.</li>
+        <li id="ac-3"><strong>AC3:</strong> When plaintext credentials import but are older than encrypted siblings, login must not present unqualified <code>Credentials imported successfully</code> as a complete fix unless validation succeeds; otherwise the output must clearly label the action as import-only / possibly stale.</li>
+        <li id="ac-4"><strong>AC4:</strong> When encrypted state exists but supported plaintext does not parse, login reports encrypted-only desktop state as unsupported and names relevant files without secrets.</li>
+        <li id="ac-5"><strong>AC5:</strong> On 401 after refresh failure, the CLI distinguishes stale/rejected credentials from missing credentials and does not create a login retry loop.</li>
+        <li id="ac-6"><strong>AC6:</strong> Documentation explains source preference, stale/encrypted diagnostics, refresh failure behavior, and that <code>auth status</code> is credential-presence-only unless validation is later added.</li>
+        <li id="ac-7"><strong>AC7:</strong> Tests cover stored accounts parsing, legacy fallback, stale plaintext import-only messaging, encrypted-only diagnostics, refresh failure messaging, and secret-safe diagnostic boundaries.</li>
+      </ol>
+    </section>
+
+    <section id="bdd-scenarios">
+      <h2>BDD scenarios</h2>
+      <article id="bdd-stored-accounts-fresh">
+        <h3>S1 — Fresh stored-accounts plaintext</h3>
+        <p><strong>Given</strong> <code>stored-accounts.json</code> contains fresh usable tokens and <code>supabase.json</code> is stale or absent, <strong>when</strong> the user runs <code>granola auth login</code>, <strong>then</strong> the CLI imports from <code>stored-accounts.json</code>, stores credentials in keychain, reports the source, and <code>granola meeting list --limit 1</code> succeeds in manual smoke testing.</p>
+      </article>
+      <article id="bdd-legacy-supabase">
+        <h3>S2 — Legacy supabase plaintext</h3>
+        <p><strong>Given</strong> only <code>supabase.json</code> exists and contains usable legacy tokens, <strong>when</strong> login runs, <strong>then</strong> the CLI imports those credentials, reports the legacy source, and preserves existing legacy behavior.</p>
+      </article>
+      <article id="bdd-stale-plaintext">
+        <h3>S3 — Stale plaintext with newer encrypted state</h3>
+        <p><strong>Given</strong> <code>stored-accounts.json</code> or <code>supabase.json</code> parses but <code>stored-accounts.json.enc</code>, <code>supabase.json.enc</code>, or <code>cache-v6.json.enc</code> is newer, <strong>when</strong> login runs without successful validation, <strong>then</strong> the CLI may save the imported credentials but must label the result as import-only / possibly stale and must not print an unqualified success message.</p>
+      </article>
+      <article id="bdd-encrypted-only">
+        <h3>S4 — Encrypted-only state</h3>
+        <p><strong>Given</strong> no supported plaintext credentials parse and encrypted desktop files exist, <strong>when</strong> login runs, <strong>then</strong> it fails closed with unsupported encrypted-state diagnostics and no secret output.</p>
+      </article>
+      <article id="bdd-refresh-rejected">
+        <h3>S5 — Refresh endpoint rejects token</h3>
+        <p><strong>Given</strong> the access token is expired and refresh returns 400 or 401, <strong>when</strong> an API command retries, <strong>then</strong> the CLI reports refresh rejection/stale credentials and explains what was tried instead of only saying to run <code>granola auth login</code>.</p>
+      </article>
+      <article id="bdd-no-state">
+        <h3>S6 — No desktop state</h3>
+        <p><strong>Given</strong> none of the supported plaintext or encrypted Granola desktop state files exist, <strong>when</strong> login runs, <strong>then</strong> it reports that no desktop auth state was found and asks the user to install/sign into Granola desktop.</p>
+      </article>
+    </section>
+
+    <section id="phases">
+      <h2>Phase-by-phase execution plan</h2>
+
+      <article class="phase" id="phase-p1-stored-accounts">
+        <h3>P1 — Stored-accounts plaintext import</h3>
+        <h4>End State</h4>
+        <p>The CLI supports <code>stored-accounts.json</code> and legacy <code>supabase.json</code>, preferring stored accounts when both are available and returning source metadata to callers.</p>
+        <h4>Tests first</h4>
+        <ul>
+          <li>Add parser tests in <code>tests/lib/auth.test.ts</code> for stringified and object-shaped <code>accounts</code>/<code>tokens</code>.</li>
+          <li>Add source-selection tests proving stored accounts is attempted before supabase and malformed stored accounts falls back safely.</li>
+          <li>Add login command tests that assert the source is reported.</li>
+        </ul>
+        <h4>Work</h4>
+        <ul>
+          <li>Add <code>parseStoredAccountsJson()</code> and a small safe JSON coercion helper local to <code>src/lib/auth.ts</code>.</li>
+          <li>Add <code>getDefaultStoredAccountsPath()</code>.</li>
+          <li>Change credential file loading to return an import result with <code>credentials</code>, <code>sourcePath</code>, <code>sourceType</code>, and warnings.</li>
+          <li>Update <code>auth login</code> to print source-aware output instead of a source-blind success message.</li>
+        </ul>
+        <h4>Expected files</h4>
+        <p><code>src/lib/auth.ts</code>, <code>src/commands/auth/login.ts</code>, <code>tests/lib/auth.test.ts</code>, <code>tests/commands/auth/login.test.ts</code>.</p>
+        <h4>Verify</h4>
+        <pre><code>npx vitest run tests/lib/auth.test.ts tests/commands/auth/login.test.ts
+npm run typecheck
+npm run check</code></pre>
+      </article>
+
+      <article class="phase" id="phase-p2-diagnostics">
+        <h3>P2 — Desktop-state diagnostics</h3>
+        <h4>End State</h4>
+        <p>Login and auth error handling can describe supported plaintext candidates, encrypted-only state, and stale plaintext without reading or printing secrets.</p>
+        <h4>Tests first</h4>
+        <ul>
+          <li>Add filesystem-mocked tests for plaintext missing plus encrypted present.</li>
+          <li>Add tests for plaintext older than encrypted siblings.</li>
+          <li>Add tests for no Granola desktop state found.</li>
+          <li>Add login output tests proving stale plaintext is labeled import-only / possibly stale and never prints an unqualified success message in that case.</li>
+        </ul>
+        <h4>Work</h4>
+        <ul>
+          <li>Create <code>src/lib/granola-desktop-state.ts</code> to inspect existence and mtimes for <code>supabase.json</code>, <code>stored-accounts.json</code>, <code>cache-v6.json</code>, <code>supabase.json.enc</code>, <code>stored-accounts.json.enc</code>, <code>cache-v6.json.enc</code>, and <code>storage.dek</code>.</li>
+          <li>Attach diagnostic warnings to credential import results.</li>
+          <li>Update <code>auth login</code> and auth error handling to use metadata-only diagnostics.</li>
+        </ul>
+        <h4>Expected files</h4>
+        <p><code>src/lib/granola-desktop-state.ts</code>, <code>src/lib/auth.ts</code>, <code>src/commands/auth/login.ts</code>, <code>src/lib/errors.ts</code>, <code>tests/lib/granola-desktop-state.test.ts</code>, <code>tests/commands/auth/login.test.ts</code>, <code>tests/lib/errors.test.ts</code>.</p>
+        <h4>Verify</h4>
+        <pre><code>npx vitest run tests/lib/auth.test.ts tests/lib/granola-desktop-state.test.ts tests/commands/auth/login.test.ts tests/lib/errors.test.ts
+npm run typecheck
+npm run check</code></pre>
+      </article>
+
+      <article class="phase" id="phase-p3-refresh-errors">
+        <h3>P3 — Refresh and 401 error truthfulness</h3>
+        <h4>End State</h4>
+        <p>Refresh failures no longer collapse into generic <code>Authentication required</code> guidance that tells users to rerun a known-bad import loop.</p>
+        <h4>Tests first</h4>
+        <ul>
+          <li>Add focused tests in <code>tests/lib/auth.test.ts</code> for WorkOS 400/401 response metadata or a typed refresh-failure result.</li>
+          <li>Add service/error tests proving 401 after refresh failure reports rejected/stale credentials distinctly from absent credentials.</li>
+        </ul>
+        <h4>Work</h4>
+        <ul>
+          <li>Keep legacy WorkOS refresh attempt only as compatibility unless a current Granola refresh path is confirmed before implementation.</li>
+          <li>Return or throw a typed refresh-failure reason rather than losing response status.</li>
+          <li>Update <code>withTokenRefresh()</code> and global 401 handling to emit actionable diagnostics that include what was tried and why login may not help.</li>
+        </ul>
+        <h4>Expected files</h4>
+        <p><code>src/lib/auth.ts</code>, <code>src/services/client.ts</code>, <code>src/lib/errors.ts</code>, <code>tests/lib/auth.test.ts</code>, <code>tests/services/client.test.ts</code>, <code>tests/lib/errors.test.ts</code>.</p>
+        <h4>Verify</h4>
+        <pre><code>npx vitest run tests/lib/auth.test.ts tests/services/client.test.ts tests/lib/errors.test.ts
+npm run typecheck
+npm run check
+npm test</code></pre>
+      </article>
+
+      <article class="phase" id="phase-p4-docs-final-verification">
+        <h3>P4 — Documentation and final verification</h3>
+        <h4>End State</h4>
+        <p>Users and agents understand what <code>auth login</code>, <code>auth status</code>, refresh, and encrypted desktop state diagnostics mean for PR 1.</p>
+        <h4>Tests first</h4>
+        <p>No tests first unless CLI help snapshots exist. Preserve test updates from P1–P3.</p>
+        <h4>Work</h4>
+        <ul>
+          <li>Update <code>README.md</code> authentication and troubleshooting sections.</li>
+          <li>Update <code>docs/SECURITY.md</code> to state that PR 1 uses metadata-only inspection and does not decrypt encrypted desktop state.</li>
+          <li>Add release-note language covering stored-accounts support, stale plaintext/import-only messaging, refresh diagnostics, and encrypted-only limitations.</li>
+        </ul>
+        <h4>Expected files</h4>
+        <p><code>README.md</code>, <code>docs/SECURITY.md</code>, possibly <code>docs/INTERNALS.md</code>.</p>
+        <h4>Verify</h4>
+        <pre><code>npm run typecheck
+npm run check
+npm test
+npm run build</code></pre>
+      </article>
+    </section>
+
+    <section id="deferred-durable-auth-research">
+      <h2>Deferred durable-auth research</h2>
+      <p>This is not part of the active PR 1 execution path. After PR 1 ships, create or update a separate reviewed research plan to choose between companion CLI/socket support, encrypted-state decryption, or explicit long-term encrypted-only non-support.</p>
+      <ul>
+        <li id="deferred-companion">Investigate companion CLI metadata at <code>~/Library/Application Support/Granola/companion-cli/companion-cli.json</code>, the <code>granola-companion-cli.sock</code> socket, and the <code>companion_cli</code> feature flag.</li>
+        <li id="deferred-encryption">Investigate <code>storage.dek</code>, the <code>Granola Safe Storage</code> keychain item, encrypted envelope format, and whether Electron <code>safeStorage</code> or a native helper is required.</li>
+        <li id="deferred-boundary">Make an explicit product/security decision before adding native dependencies or decrypting desktop state in this CLI.</li>
+      </ul>
+    </section>
+
+    <section id="test-coverage-matrix">
+      <h2>Test coverage matrix</h2>
+      <table>
+        <thead>
+          <tr><th>Coverage target</th><th>Acceptance / scenarios</th><th>Test files</th></tr>
+        </thead>
+        <tbody>
+          <tr id="matrix-stored"><td>stored-accounts parsing and source preference</td><td>AC1, S1</td><td><code>tests/lib/auth.test.ts</code>, <code>tests/commands/auth/login.test.ts</code></td></tr>
+          <tr id="matrix-legacy"><td>legacy supabase compatibility</td><td>AC2, S2</td><td><code>tests/lib/auth.test.ts</code>, <code>tests/commands/auth/login.test.ts</code></td></tr>
+          <tr id="matrix-stale"><td>stale plaintext and import-only/no-false-success messaging</td><td>AC3, S3</td><td><code>tests/lib/granola-desktop-state.test.ts</code>, <code>tests/commands/auth/login.test.ts</code>, <code>tests/lib/errors.test.ts</code></td></tr>
+          <tr id="matrix-encrypted"><td>encrypted-only fail-closed diagnostics and secret-safe boundaries</td><td>AC4, S4</td><td><code>tests/lib/granola-desktop-state.test.ts</code>, <code>tests/commands/auth/login.test.ts</code>, <code>tests/lib/errors.test.ts</code></td></tr>
+          <tr id="matrix-refresh"><td>refresh rejection and 401 messaging</td><td>AC5, S5</td><td><code>tests/lib/auth.test.ts</code>, <code>tests/services/client.test.ts</code>, <code>tests/lib/errors.test.ts</code></td></tr>
+          <tr id="matrix-no-state"><td>no desktop state guidance</td><td>S6</td><td><code>tests/commands/auth/login.test.ts</code>, <code>tests/lib/granola-desktop-state.test.ts</code></td></tr>
+          <tr id="matrix-docs"><td>auth status and troubleshooting docs</td><td>AC6</td><td>manual docs review plus <code>npm run check</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="verification-strategy">
+      <h2>Verification strategy</h2>
+      <p>Use unit tests for parsers, source selection, desktop-state metadata, refresh failure typing, command messaging, and secret-safe diagnostic boundaries. Run the full suite before final handoff.</p>
+      <pre><code>npm run typecheck
+npm run check
+npm test
+npm run build</code></pre>
+      <h3 id="manual-smoke">Manual smoke pass criteria</h3>
+      <pre><code>node dist/main.js auth login
+node dist/main.js meeting list --limit 1 --output json --no-pager</code></pre>
+      <ul>
+        <li id="manual-fresh"><strong>Fresh plaintext case:</strong> login reports <code>stored-accounts.json</code> or <code>supabase.json</code> as the source, then <code>meeting list --limit 1</code> succeeds.</li>
+        <li id="manual-stale"><strong>Stale/encrypted-only case:</strong> login and/or the API command reports stale plaintext or unsupported encrypted-only state with file names/relative freshness and no secrets. This diagnostic is a successful PR 1 outcome on machines where current usable plaintext credentials are unavailable.</li>
+      </ul>
+      <p class="muted">Do not paste command output containing tokens or decrypted payloads. If debug logs are needed, redact bearer tokens, access tokens, refresh tokens, DEKs, session IDs, and decrypted JSON.</p>
+    </section>
+
+    <section id="delivery-order">
+      <h2>Delivery order</h2>
+      <ol>
+        <li id="delivery-pr1"><strong>PR 1:</strong> P1–P4 together: plaintext import, diagnostics, refresh/error truthfulness, docs, and final verification.</li>
+        <li id="delivery-pr2"><strong>Later research PR/plan:</strong> companion socket vs encrypted-state decryptor vs formal long-term unsupported boundary.</li>
+        <li id="delivery-pr3"><strong>Later implementation PR:</strong> only after the durable-auth research decision is reviewed.</li>
+      </ol>
+    </section>
+
+    <section id="non-goals">
+      <h2>Non-goals</h2>
+      <ul>
+        <li id="non-goal-encrypted-implementation">Implementing encrypted-state decryption in PR 1.</li>
+        <li id="non-goal-companion-implementation">Implementing companion socket/CLI support in PR 1.</li>
+        <li id="non-goal-plan-gating">Bypassing Granola plan gating for official API, MCP, transcript, or folder access.</li>
+        <li id="non-goal-secret-export">Logging, exporting, or committing real Granola tokens or decrypted desktop state.</li>
+        <li id="non-goal-mcp">Replacing the official Granola MCP integration.</li>
+        <li id="non-goal-validation">Adding live <code>auth status</code> validation unless separately scoped; documentation should describe current presence-only semantics.</li>
+      </ul>
+    </section>
+
+    <section id="decisions-log">
+      <h2>Decisions / Deviations log</h2>
+      <ul>
+        <li id="log-2026-06-17-initial"><strong>2026-06-17:</strong> Converted <code>docs/AUTH-RECOVERY-PLAN.md</code> into a browser-review HTML plan.</li>
+        <li id="log-2026-06-17-review"><strong>2026-06-17:</strong> Incorporated Codex and Claude Code plan-review blockers by narrowing active execution to PR 1, adding no-false-success/import-only acceptance, splitting fresh vs stale stored-accounts scenarios, moving durable encrypted/companion auth to deferred research, and adding full-suite/check/build verification gates.</li>
+        <li id="log-2026-06-17-implementation"><strong>2026-06-17:</strong> Implemented PR 1 scope: stored-accounts import preference, metadata-only desktop-state diagnostics, stale plaintext import-only messaging, refresh failure diagnostics, and auth documentation updates.</li>
+        <li id="log-2026-06-17-review-followups"><strong>2026-06-17:</strong> Scoped implementation reviews found no in-plan correctness defects. Follow-ups intentionally deferred from PR 1: avoid duplicate desktop-state stat calls on login failure; refresh stale <code>docs/INTERNALS.md</code> code snippets in a future docs pass; clean up cosmetic refresh-status formatting when <code>statusText</code> is unavailable.</li>
+        <li id="log-2026-06-17-pr-feedback"><strong>2026-06-17:</strong> PR review feedback was addressed by preserving <code>AuthRecoveryError</code> details through pre-existing command-level catches and by reporting keychain credential-save failures separately from invalid refresh responses.</li>
+        <li id="log-2026-06-17-coderabbit-feedback"><strong>2026-06-17:</strong> CodeRabbit findings were addressed by adding a refresh request timeout, limiting encrypted-only diagnostics to cases with no supported plaintext files, rethrowing non-missing desktop-state stat errors, and fixing refresh status suffix formatting. A duplicate credential-save finding was already fixed in the previous feedback commit.</li>
+        <li id="log-2026-06-18-codex-followup"><strong>2026-06-18:</strong> Follow-up Codex findings were addressed by keeping the refresh timeout active through response body parsing and by selecting the freshest parseable plaintext credential source, using <code>stored-accounts.json</code> only as the tie-breaker.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

@@ -21,11 +21,15 @@ Granola CLI uses platform-native secure storage for credentials via the `cross-k
 
 ### Credential Import
 
-The CLI supports importing credentials from the Granola desktop application:
+The CLI supports importing plaintext credentials from the Granola desktop application:
 
-- **Source**: `~/Library/Application Support/Granola/supabase.json`
-- **Format**: Supabase JSON format
-- **Process**: Parses and validates required fields before storing in keychain
+- **Preferred source**: `~/Library/Application Support/Granola/stored-accounts.json`
+- **Legacy fallback**: `~/Library/Application Support/Granola/supabase.json`
+- **Process**: Parses supported token fields, records source metadata, and stores credentials in the system keychain
+
+Modern Granola desktop installs may expose only encrypted current state, such as `stored-accounts.json.enc`, `supabase.json.enc`, `cache-v6.json.enc`, and `storage.dek`. This CLI performs metadata-only inspection of those files for diagnostics: existence, file names, and relative freshness. It does **not** decrypt encrypted desktop state, read decrypted payloads, log tokens, or persist decrypted state outside the existing keychain credential boundary.
+
+If plaintext credentials are older than encrypted state, `auth login` labels the import as possibly stale/import-only unless a later API command validates the credentials.
 
 ### Token Refresh
 
@@ -34,21 +38,22 @@ The CLI automatically handles token expiration:
 **Location**: `lib/auth.ts`, `lib/lock.ts`, `services/client.ts`
 
 **How it works:**
-- `refreshAccessToken()` calls WorkOS API to refresh expired tokens
-- `withTokenRefresh()` wrapper automatically retries operations on 401 errors
+- `refreshAccessTokenWithResult()` calls the legacy WorkOS API to refresh expired tokens and preserves failure reasons
+- `withTokenRefresh()` wrapper automatically retries operations on 401 errors when refresh succeeds
 - All API-calling service methods are wrapped with automatic token refresh
 - New credentials are saved immediately after refresh
+- If refresh is rejected, the CLI reports a targeted diagnostic instead of silently masking it as a generic login retry
 
 **Token Rotation Flow:**
 1. API call fails with 401 (Unauthorized)
-2. `withTokenRefresh` catches the error and calls `refreshAccessToken()`
+2. `withTokenRefresh` catches the error and calls `refreshAccessTokenWithResult()`
 3. File-based lock is acquired to prevent race conditions (via `lib/lock.ts`)
 4. Credentials are re-read inside the lock (another process may have updated them)
 5. CLI sends refresh request to `https://api.workos.com/user_management/authenticate`
-6. WorkOS returns new `access_token` and rotated `refresh_token`
-7. New credentials are saved to keychain
+6. WorkOS returns new `access_token` and rotated `refresh_token`, or rejects the refresh token
+7. On success, new credentials are saved to keychain
 8. Lock is released
-9. Original operation is retried with fresh token
+9. Original operation is retried with fresh token, or a refresh-failed diagnostic is surfaced
 
 **Important**: WorkOS refresh tokens are **single-use**. Each refresh invalidates the previous token and issues a new one. The CLI uses file-based locking to prevent race conditions when multiple CLI processes attempt to refresh the token simultaneously.
 

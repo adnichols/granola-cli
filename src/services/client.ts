@@ -1,7 +1,8 @@
 import chalk from 'chalk';
 import { createApiClient, type GranolaApi } from '../lib/api.js';
-import { getCredentials, refreshAccessToken } from '../lib/auth.js';
+import { getCredentials, refreshAccessTokenWithResult } from '../lib/auth.js';
 import { createGranolaDebug, maskToken } from '../lib/debug.js';
+import { AuthRecoveryError } from '../lib/errors.js';
 import { createHttpClient } from '../lib/http.js';
 
 const debug = createGranolaDebug('service:client');
@@ -41,6 +42,61 @@ function isUnauthorizedError(error: unknown): boolean {
   return false;
 }
 
+function formatRefreshFailureDetails(
+  result: Exclude<Awaited<ReturnType<typeof refreshAccessTokenWithResult>>, { ok: true }>,
+): string[] {
+  const details = ['The CLI attempted to refresh the stored access token before stopping.'];
+
+  switch (result.reason) {
+    case 'server_rejected': {
+      const status =
+        result.status !== undefined
+          ? ` (${result.status}${result.statusText ? ` ${result.statusText}` : ''})`
+          : '';
+      details.push(`Granola/WorkOS rejected the refresh token${status}.`);
+      details.push('The imported desktop plaintext credentials may be stale or no longer valid.');
+      details.push(
+        'Run granola auth login once to re-import supported plaintext credentials; if it reports stale plaintext or encrypted-only state, rerunning login may not help.',
+      );
+      break;
+    }
+    case 'missing_credentials':
+      details.push('No credentials were found in the CLI keychain. Run granola auth login.');
+      break;
+    case 'missing_refresh_token':
+      details.push('Stored credentials do not include a refresh token. Run granola auth login.');
+      break;
+    case 'missing_client_id':
+      details.push('Stored credentials do not include a client id. Run granola auth login.');
+      break;
+    case 'network_error':
+      details.push(
+        'The refresh request failed due to a network error. Check your connection and retry.',
+      );
+      break;
+    case 'invalid_response':
+      details.push(
+        'The refresh endpoint returned an unexpected response without replacement tokens.',
+      );
+      break;
+    case 'save_failed':
+      details.push(
+        'The refresh endpoint returned replacement tokens, but the CLI could not save them to the keychain.',
+      );
+      details.push(
+        'Unlock the keychain or retry from an interactive terminal, then run granola auth login if needed.',
+      );
+      break;
+    case 'lock_error':
+      details.push(
+        'The CLI could not acquire the token refresh lock. Retry after other granola commands finish.',
+      );
+      break;
+  }
+
+  return details;
+}
+
 /**
  * Wraps an async operation with automatic token refresh on 401 errors.
  * If the operation fails with a 401, attempts to refresh the token and retry once.
@@ -52,10 +108,13 @@ export async function withTokenRefresh<T>(operation: () => Promise<T>): Promise<
     if (isUnauthorizedError(error)) {
       debug('401 detected, attempting token refresh');
 
-      const newCreds = await refreshAccessToken();
-      if (!newCreds) {
-        debug('token refresh failed, re-throwing original error');
-        throw error;
+      const refreshResult = await refreshAccessTokenWithResult();
+      if (!refreshResult.ok) {
+        debug('token refresh failed with reason: %s', refreshResult.reason);
+        throw new AuthRecoveryError(
+          'Authentication required; token refresh failed.',
+          formatRefreshFailureDetails(refreshResult),
+        );
       }
 
       resetClient();

@@ -657,27 +657,18 @@ Credentials are stored as JSON:
 }
 ```
 
-### Supabase JSON Parsing
+### Desktop Credential Import
 
-The `login` command can import credentials from Supabase JSON:
+The `login` command imports supported plaintext credentials from Granola desktop state:
 
-```typescript
-export function parseSupabaseJson(json: string): Credentials | null {
-  try {
-    const parsed = JSON.parse(json);
-    if (!parsed.refresh_token) return null;
+1. Prefer `stored-accounts.json`
+2. Fall back to legacy `supabase.json`
+3. Save parsed credentials to the system keychain
+4. Warn when imported plaintext is older than encrypted desktop state
 
-    return {
-      refreshToken: parsed.refresh_token,
-      clientId: parsed.client_id || DEFAULT_CLIENT_ID,
-    };
-  } catch {
-    return null;
-  }
-}
-```
+Modern Granola desktop installs may have newer encrypted files such as `stored-accounts.json.enc`, `supabase.json.enc`, and `cache-v6.json.enc`. The CLI inspects only metadata for these files and does not decrypt encrypted state.
 
-This allows users to paste the JSON object from their browser's local storage.
+`auth status` is credential-presence-only; API commands provide the real validation surface.
 
 ## Alias System
 

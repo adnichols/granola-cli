@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createListCommand } from '../../../src/commands/folder/list.js';
+import { AuthRecoveryError } from '../../../src/lib/errors.js';
 import { mockFolders } from '../../fixtures/folders.js';
 import { captureConsole, mockProcessExit } from '../../setup.js';
 
@@ -86,6 +87,27 @@ describe('folder list command', () => {
 
     expect(console_.errors.some((e) => /invalid format/i.test(e))).toBe(true);
     expect(exit.exitCodes).toContain(1);
+    exit.restore();
+  });
+
+  it('should preserve auth recovery details when folder API auth fails', async () => {
+    vi.mocked(folders.list).mockRejectedValue(
+      new AuthRecoveryError('Authentication required; token refresh failed.', [
+        'The imported desktop plaintext credentials may be stale.',
+      ]),
+    );
+    const exit = mockProcessExit();
+
+    const program = new Command();
+    program.addCommand(createListCommand());
+
+    await expect(program.parseAsync(['node', 'test', 'list'])).rejects.toThrow(/process\.exit/i);
+
+    expect(console_.errors.some((log) => /token refresh failed/i.test(log))).toBe(true);
+    expect(console_.errors.some((log) => /plaintext credentials may be stale/i.test(log))).toBe(
+      true,
+    );
+    expect(exit.exitCodes).toContain(2);
     exit.restore();
   });
 

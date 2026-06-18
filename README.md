@@ -76,6 +76,10 @@ The CLI stores credentials securely in your system keychain.
 granola auth login
 ```
 
+`auth login` imports supported plaintext credentials from the Granola desktop app. It tries `stored-accounts.json` first, then falls back to legacy `supabase.json`.
+
+On modern Granola desktop installs, current desktop state may be encrypted while older plaintext files remain on disk. In that case the CLI labels the import as possibly stale/import-only or reports encrypted-only desktop state as unsupported. It does not decrypt encrypted desktop state.
+
 ### Check Status
 
 ```bash
@@ -88,6 +92,8 @@ Output:
 Authenticated
 ```
 
+`auth status` is a presence check for credentials in the CLI keychain. It does not prove that Granola's API will accept those credentials.
+
 ### Logout
 
 ```bash
@@ -98,14 +104,16 @@ granola auth logout
 
 - Access tokens are automatically refreshed when they expire
 - Refresh tokens are single-use and rotated on each refresh
-- If token refresh fails, you'll need to re-run `granola auth login`
+- If refresh is rejected, the CLI reports that refresh failed and explains whether credentials may be stale
+- Rerunning `granola auth login` helps only when supported plaintext desktop credentials are current
 
 ### Troubleshooting
 
 If you see authentication errors:
 
-1. Run `granola auth status` to check credential status
-2. Run `granola auth login` to re-import credentials from Granola desktop
+1. Run `granola auth login` to import supported desktop credentials
+2. If login reports stale plaintext or encrypted-only state, rerunning login may not help until this CLI supports Granola's current encrypted desktop auth path
+3. Run an API command such as `granola meeting list --limit 1` to validate imported credentials
 
 ## Commands
 
