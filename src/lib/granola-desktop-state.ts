@@ -66,8 +66,12 @@ export async function inspectGranolaDesktopState(
           exists: true,
           mtimeMs: info.mtimeMs,
         } satisfies GranolaDesktopStateEntry;
-      } catch {
-        return { name, path, exists: false } satisfies GranolaDesktopStateEntry;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT' || code === 'ENOTDIR') {
+          return { name, path, exists: false } satisfies GranolaDesktopStateEntry;
+        }
+        throw error;
       }
     }),
   );

@@ -21,6 +21,10 @@ import {
   isPlaintextStaleRelativeToEncrypted,
 } from '../../src/lib/granola-desktop-state.js';
 
+function missingFileError(): NodeJS.ErrnoException {
+  return Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+}
+
 describe('granola desktop state', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,7 +37,7 @@ describe('granola desktop state', () => {
   });
 
   it('should report no desktop state when no files exist', async () => {
-    vi.mocked(fs.stat).mockRejectedValue(new Error('ENOENT'));
+    vi.mocked(fs.stat).mockRejectedValue(missingFileError());
 
     const state = await inspectGranolaDesktopState('/tmp/granola');
 
@@ -47,7 +51,7 @@ describe('granola desktop state', () => {
     vi.mocked(fs.stat).mockImplementation(async (path) => {
       if (String(path).endsWith('stored-accounts.json.enc')) return { mtimeMs: 2000 } as never;
       if (String(path).endsWith('cache-v6.json.enc')) return { mtimeMs: 2000 } as never;
-      throw new Error('ENOENT');
+      throw missingFileError();
     });
 
     const state = await inspectGranolaDesktopState('/tmp/granola');
@@ -61,7 +65,7 @@ describe('granola desktop state', () => {
   it('should not treat cache-v6.json as supported plaintext credentials', async () => {
     vi.mocked(fs.stat).mockImplementation(async (path) => {
       if (String(path).endsWith('cache-v6.json')) return { mtimeMs: 1000 } as never;
-      throw new Error('ENOENT');
+      throw missingFileError();
     });
 
     const state = await inspectGranolaDesktopState('/tmp/granola');
@@ -71,11 +75,17 @@ describe('granola desktop state', () => {
     expect(getExistingFileNames(state)).toEqual(['cache-v6.json']);
   });
 
+  it('should rethrow non-missing file stat errors', async () => {
+    vi.mocked(fs.stat).mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+
+    await expect(inspectGranolaDesktopState('/tmp/granola')).rejects.toThrow(/EACCES/);
+  });
+
   it('should detect plaintext older than encrypted sibling state', async () => {
     vi.mocked(fs.stat).mockImplementation(async (path) => {
       if (String(path).endsWith('stored-accounts.json')) return { mtimeMs: 1000 } as never;
       if (String(path).endsWith('stored-accounts.json.enc')) return { mtimeMs: 3000 } as never;
-      throw new Error('ENOENT');
+      throw missingFileError();
     });
 
     const state = await inspectGranolaDesktopState('/tmp/granola');
@@ -88,7 +98,7 @@ describe('granola desktop state', () => {
     vi.mocked(fs.stat).mockImplementation(async (path) => {
       if (String(path).endsWith('stored-accounts.json')) return { mtimeMs: 3000 } as never;
       if (String(path).endsWith('stored-accounts.json.enc')) return { mtimeMs: 1000 } as never;
-      throw new Error('ENOENT');
+      throw missingFileError();
     });
 
     const state = await inspectGranolaDesktopState('/tmp/granola');

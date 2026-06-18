@@ -398,6 +398,7 @@ node dist/main.js meeting list --limit 1 --output json --no-pager</code></pre>
         <li id="log-2026-06-17-implementation"><strong>2026-06-17:</strong> Implemented PR 1 scope: stored-accounts import preference, metadata-only desktop-state diagnostics, stale plaintext import-only messaging, refresh failure diagnostics, and auth documentation updates.</li>
         <li id="log-2026-06-17-review-followups"><strong>2026-06-17:</strong> Scoped implementation reviews found no in-plan correctness defects. Follow-ups intentionally deferred from PR 1: avoid duplicate desktop-state stat calls on login failure; refresh stale <code>docs/INTERNALS.md</code> code snippets in a future docs pass; clean up cosmetic refresh-status formatting when <code>statusText</code> is unavailable.</li>
         <li id="log-2026-06-17-pr-feedback"><strong>2026-06-17:</strong> PR review feedback was addressed by preserving <code>AuthRecoveryError</code> details through pre-existing command-level catches and by reporting keychain credential-save failures separately from invalid refresh responses.</li>
+        <li id="log-2026-06-17-coderabbit-feedback"><strong>2026-06-17:</strong> CodeRabbit findings were addressed by adding a refresh request timeout, limiting encrypted-only diagnostics to cases with no supported plaintext files, rethrowing non-missing desktop-state stat errors, and fixing refresh status suffix formatting. A duplicate credential-save finding was already fixed in the previous feedback commit.</li>
       </ul>
     </section>
   </main>

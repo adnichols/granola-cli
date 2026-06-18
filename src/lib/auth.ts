@@ -9,6 +9,7 @@ import {
   getDefaultGranolaStateDirectory,
   hasAnyDesktopState,
   hasEncryptedState,
+  hasSupportedPlaintextState,
   inspectGranolaDesktopState,
   isPlaintextStaleRelativeToEncrypted,
 } from './granola-desktop-state.js';
@@ -20,6 +21,7 @@ const SERVICE_NAME = 'com.granola.cli';
 const ACCOUNT_NAME = 'credentials';
 const DEFAULT_CLIENT_ID = 'client_GranolaMac';
 const WORKOS_AUTH_URL = 'https://api.workos.com/user_management/authenticate';
+const TOKEN_REFRESH_TIMEOUT_MS = 10_000;
 
 export type CredentialSourceType = 'stored-accounts' | 'supabase';
 
@@ -107,6 +109,8 @@ export async function refreshAccessTokenWithResult(): Promise<RefreshAccessToken
       }
 
       let response: Response;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), TOKEN_REFRESH_TIMEOUT_MS);
       try {
         response = await fetch(WORKOS_AUTH_URL, {
           method: 'POST',
@@ -116,10 +120,13 @@ export async function refreshAccessTokenWithResult(): Promise<RefreshAccessToken
             grant_type: 'refresh_token',
             refresh_token: creds.refreshToken,
           }),
+          signal: controller.signal,
         });
       } catch (error) {
         debug('token refresh network error: %O', error);
         return { ok: false, reason: 'network_error' };
+      } finally {
+        clearTimeout(timeout);
       }
 
       if (!response.ok) {
@@ -350,7 +357,7 @@ export async function loadCredentialsFromFile(): Promise<CredentialImportResult 
 
   if (!hasAnyDesktopState(desktopState)) {
     debug('no Granola desktop state found');
-  } else if (hasEncryptedState(desktopState)) {
+  } else if (hasEncryptedState(desktopState) && !hasSupportedPlaintextState(desktopState)) {
     debug('encrypted Granola desktop state found without supported plaintext credentials');
   }
 
@@ -362,7 +369,7 @@ export async function getAuthImportFailureMessage(): Promise<string> {
   if (!hasAnyDesktopState(state)) {
     return 'No Granola desktop auth state was found. Install Granola desktop and sign in, then run granola auth login again.';
   }
-  if (hasEncryptedState(state)) {
+  if (hasEncryptedState(state) && !hasSupportedPlaintextState(state)) {
     return `${describeDesktopState(state)} Current Granola desktop state appears encrypted and is not supported by this CLI yet.`;
   }
   return `${describeDesktopState(state)} No supported plaintext credentials could be parsed.`;

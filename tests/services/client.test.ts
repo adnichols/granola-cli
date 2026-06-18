@@ -152,11 +152,30 @@ describe('client service', () => {
         statusText: 'Bad Request',
       });
 
-      await expect(withTokenRefresh(mockOperation)).rejects.toThrow(
-        'Authentication required; token refresh failed.',
-      );
+      await expect(withTokenRefresh(mockOperation)).rejects.toMatchObject({
+        message: 'Authentication required; token refresh failed.',
+        details: expect.arrayContaining([
+          'Granola/WorkOS rejected the refresh token (400 Bad Request).',
+        ]),
+      });
       expect(mockOperation).toHaveBeenCalledTimes(1);
       expect(auth.refreshAccessTokenWithResult).toHaveBeenCalledTimes(1);
+    });
+
+    it('should format server rejection status without status text', async () => {
+      const error401 = { status: 401, message: 'Unauthorized' };
+      const mockOperation = vi.fn().mockRejectedValue(error401);
+
+      vi.mocked(auth.refreshAccessTokenWithResult).mockResolvedValue({
+        ok: false,
+        reason: 'server_rejected',
+        status: 401,
+      });
+
+      await expect(withTokenRefresh(mockOperation)).rejects.toMatchObject({
+        message: 'Authentication required; token refresh failed.',
+        details: expect.arrayContaining(['Granola/WorkOS rejected the refresh token (401).']),
+      });
     });
 
     it('should explain when refreshed credentials cannot be saved', async () => {

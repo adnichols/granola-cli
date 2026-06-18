@@ -32,6 +32,7 @@ import * as crossKeychain from 'cross-keychain';
 // Import auth module after mocking
 import {
   deleteCredentials,
+  getAuthImportFailureMessage,
   getCredentials,
   getDefaultStoredAccountsPath,
   getDefaultSupabasePath,
@@ -44,10 +45,14 @@ import {
 } from '../../src/lib/auth.js';
 import { withLock } from '../../src/lib/lock.js';
 
+function missingFileError(): NodeJS.ErrnoException {
+  return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
+}
+
 describe('auth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fs.stat).mockRejectedValue(new Error('ENOENT: no such file or directory'));
+    vi.mocked(fs.stat).mockRejectedValue(missingFileError());
   });
 
   describe('getCredentials', () => {
@@ -534,7 +539,7 @@ describe('auth', () => {
             },
           });
         }
-        throw new Error('ENOENT');
+        throw missingFileError();
       });
 
       const result = await loadCredentialsFromFile();
@@ -556,6 +561,23 @@ describe('auth', () => {
       const result = await loadCredentialsFromFile();
 
       expect(result).toBeNull();
+    });
+
+    it('should not call mixed plaintext and encrypted state encrypted-only', async () => {
+      vi.mocked(fs.stat).mockImplementation(async (path) => {
+        if (
+          String(path).endsWith('stored-accounts.json') ||
+          String(path).endsWith('stored-accounts.json.enc')
+        ) {
+          return { mtimeMs: 1000 } as never;
+        }
+        throw missingFileError();
+      });
+
+      const message = await getAuthImportFailureMessage();
+
+      expect(message).toMatch(/No supported plaintext credentials could be parsed/i);
+      expect(message).not.toMatch(/encrypted.*not supported/i);
     });
   });
 
@@ -597,6 +619,7 @@ describe('auth', () => {
             grant_type: 'refresh_token',
             refresh_token: 'old-refresh-token',
           }),
+          signal: expect.any(AbortSignal),
         }),
       );
 
@@ -727,6 +750,32 @@ describe('auth', () => {
           clientId: 'test-client-id',
         }),
       );
+    });
+
+    it('should return null when the refresh request times out', async () => {
+      vi.useFakeTimers();
+      const storedCreds = JSON.stringify({
+        refreshToken: 'old-refresh-token',
+        accessToken: 'old-access-token',
+        clientId: 'test-client-id',
+      });
+      vi.mocked(crossKeychain.getPassword).mockResolvedValue(storedCreds);
+      mockFetch.mockImplementation((_url, options) => {
+        const signal = (options as RequestInit).signal;
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        });
+      });
+
+      const resultPromise = refreshAccessTokenWithResult();
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await resultPromise;
+
+      expect(result).toEqual({ ok: false, reason: 'network_error' });
+      expect(crossKeychain.setPassword).not.toHaveBeenCalled();
+      vi.useRealTimers();
     });
 
     it('should return null on network error', async () => {

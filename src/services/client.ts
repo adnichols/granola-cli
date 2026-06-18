@@ -49,7 +49,10 @@ function formatRefreshFailureDetails(
 
   switch (result.reason) {
     case 'server_rejected': {
-      const status = result.status ? ` (${result.status} ${result.statusText || ''})`.trim() : '';
+      const status =
+        result.status !== undefined
+          ? ` (${result.status}${result.statusText ? ` ${result.statusText}` : ''})`
+          : '';
       details.push(`Granola/WorkOS rejected the refresh token${status}.`);
       details.push('The imported desktop plaintext credentials may be stale or no longer valid.');
       details.push(
